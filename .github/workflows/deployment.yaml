@@ -1,0 +1,94 @@
+name: deploy
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+permissions:
+  id-token: write
+  contents: read
+  pull-requests: write
+
+jobs:
+  lint-test:
+    name: "lint and test"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init -backend=false
+
+      - name: Terraform Validate
+        run: terraform validate
+
+  deploy-dev:
+    name: "Deploy on dev"
+    needs: "lint-test"
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@main
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_DEV }}
+          aws-region: us-east-1
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3 
+        with:
+          terraform_version: "1.14.3"
+      - name: Terraform apply
+        run: |
+          cd environments/dev
+          terraform init
+          terraform apply -target=module.ec2_instance -target=module.logs_bucket -auto-approve
+
+  deploy-staging:
+    name: "Deploy on staging"
+    needs: deploy-dev
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@main
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_STAGING }}
+          aws-region: us-east-1
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3 
+        with:
+          terraform_version: "1.14.3"
+      - name: Terraform Apply
+        run: |
+          cd environments/staging
+          terraform init
+          terraform apply -target=module.ec2_instance -target=module.logs_bucket -auto-approve
+
+  deploy-prod:
+    name: "Deploy on prod"
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    environment: prod
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_PROD }}
+          aws-region: us-east-1
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3 
+        with:
+          terraform_version: "1.14.3"
+      - name: Terraform Apply
+        run: |
+          cd environments/prod
+          terraform init
+          terraform apply -target=module.ec2_instance -target=module.logs_bucket -auto-approve

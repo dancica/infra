@@ -1,0 +1,32 @@
+This is the terraform repository that creates ec2, s3 and other infra resources, for three different environments. It also has github actions defined, to deploy when git push is initialized.
+
+Repository consists of three main parts: global, modules and environments
+
+1. Global is initialized and applied first, in order to create DynamoDB and S3 bucket for tf state, since we don't want to keep it local. Github OpenID connect provider is also created in global dir, that tells AWS to trust the Github identity provider.
+
+2. Modules are defined for creating EC2, S3 and IAM roles (for github OpenID authentication)
+
+2.1. github_oidc directory is out of scope for this task, but needed in order to connect Github and AWS. 
+First IAM policy document oidc has specified OpenIDC for github and restricted access to one repository, so only workflows running in specified github repo can assume it.
+A permissions policy document is needed in order to allow github workers, that will assume role with this policy, to create EC2, S3,  check and change lock state in DynamoDB for terraform state, list terraform.tfstate in S3 bucket for specific environments and get/put objects.
+AWS IAM role combines OIDC and permissions policy, in order to provide OpenID authentication.
+
+2.2. Module ec2 will create an EC2 instance defined only with Image ID (that is required) and Tag. It will create EC2 in default VPC. There is a lot of variables to define here if needed, but for the sake of simplicity it was skipped (not required by project task)
+
+2.3. Module s3 will create an encrypted S3 Bucket that doesn't have public access enabled and it has a policy that blocks access by default for all IAM users. It has also enabled versioning 
+
+3. Environments directory consists of three subdirectories: dev, staging and prod. The idea is to define provider and specific environment variables in each environment directory and to call modules with those variables. In this way repeating code is avoided. All modules are defined in modules dir, and environments with specific variables are called modules.
+
+Infrastructure is tested on an AWS account, it can be created with Terraform from a local machine or via Github actions. Both ways will create three EC2 and S3 on AWS, with tags.
+
+Github actions are defined in workflows directory, and github will automatically detect yaml files, build, test and deploy code according to instructions from file.
+
+Workflow consists of 4 stages, first is to test terraform code, then to deploy EC2 and S3 on dev, staging and prod environments, respectively.
+
+When pull request is triggered, actions will execute tests, here is just an example of testing terraform code with terraform validate.
+
+When push is trigered to main (ex. merge from feature/xx to main), github actions will create dev, then staging and finaly production (with manual approval). Each stage is conditioned by sucessfully executed previous stage.
+
+During code deployment, github actions is coping code on ubuntu runner, assuming IAM role with OIDC (role arn is defined in github secrets), installing terraform , initializing and applying terraform.
+
+Last stage is prod deployment, where condition is environment: prod, which means that this stage cannot be run until environment rules are fullfiled. Environment rules are defined in github -> envirnoments -> rules, and requires manual approval in before prod infrastructure is created.
