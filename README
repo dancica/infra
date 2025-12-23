@@ -29,4 +29,4 @@ When push is trigered to main (ex. merge from feature/xx to main), github action
 
 During code deployment, github actions is coping code on ubuntu runner, assuming IAM role with OIDC (role arn is defined in github secrets), installing terraform , initializing and applying terraform.
 
-Last stage is prod deployment, where condition is environment: prod, which means that this stage cannot be run until environment rules are fullfiled. Environment rules are defined in github -> envirnoments -> rules, and requires manual approval in before prod infrastructure is created.
+Last stage is prod deployment, where condition is environment: prod, which means that this stage cannot be run until environment rules are fullfiled. Environment rules are defined in github -> envirnoments -> rules, and requires manual approval in before prod infrastructure is created. 
